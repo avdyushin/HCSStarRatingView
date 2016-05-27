@@ -62,6 +62,7 @@
     _value = 0;
     _spacing = 5.f;
     _continuous = YES;
+    [self _updateAppearanceForState:self.enabled];
 }
 
 - (void)setNeedsLayout {
@@ -111,11 +112,13 @@
 }
 
 - (void)setValue:(CGFloat)value sendValueChangedAction:(BOOL)sendAction {
+    [self willChangeValueForKey:NSStringFromSelector(@selector(value))];
     if (_value != value && value >= _minimumValue && value <= _maximumValue) {
         _value = value;
         if (sendAction) [self sendActionsForControlEvents:UIControlEventValueChanged];
         [self setNeedsDisplay];
     }
+    [self didChangeValueForKey:NSStringFromSelector(@selector(value))];
 }
 
 - (void)setSpacing:(CGFloat)spacing {
@@ -160,6 +163,19 @@
 
 - (BOOL)shouldUseImages {
     return (self.emptyStarImage!=nil && self.filledStarImage!=nil);
+}
+
+#pragma mark - State
+
+- (void)setEnabled:(BOOL)enabled
+{
+    [self _updateAppearanceForState:enabled];
+    [super setEnabled:enabled];
+}
+
+- (void)_updateAppearanceForState:(BOOL)enabled
+{
+    self.alpha = enabled ? 1.f : .5f;
 }
 
 #pragma mark - Image Drawing
@@ -248,11 +264,11 @@
     CGContextSetFillColorWithColor(context, self.backgroundColor.CGColor);
     CGContextFillRect(context, rect);
     
-    CGFloat availableWidth = rect.size.width - (_spacing * (_maximumValue - 1));
+    CGFloat availableWidth = rect.size.width - (_spacing * (_maximumValue - 1)) - 2;
     CGFloat cellWidth = (availableWidth / _maximumValue);
     CGFloat starSide = (cellWidth <= rect.size.height) ? cellWidth : rect.size.height;
     for (int idx = 0; idx < _maximumValue; idx++) {
-        CGPoint center = CGPointMake(cellWidth*idx + cellWidth/2 + _spacing*idx, rect.size.height/2);
+        CGPoint center = CGPointMake(cellWidth*idx + cellWidth/2 + _spacing*idx + 1, rect.size.height/2);
         CGRect frame = CGRectMake(center.x - starSide/2, center.y - starSide/2, starSide, starSide);
         BOOL highlighted = (idx+1 <= ceilf(_value));
         if (_allowsHalfStars && highlighted && (idx+1 > _value)) {
@@ -293,23 +309,31 @@
 #pragma mark - Touches
 
 - (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
-    [super beginTrackingWithTouch:touch withEvent:event];
-    if (![self isFirstResponder]) {
-        [self becomeFirstResponder];
+    if (self.isEnabled) {
+        [super beginTrackingWithTouch:touch withEvent:event];
+        if (_shouldBecomeFirstResponder && ![self isFirstResponder]) {
+            [self becomeFirstResponder];
+        }
+        [self _handleTouch:touch];
+        return YES;
+    } else {
+        return NO;
     }
-    [self _handleTouch:touch];
-    return YES;
 }
 
 - (BOOL)continueTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
-    [super continueTrackingWithTouch:touch withEvent:event];
-    [self _handleTouch:touch];
-    return YES;
+    if (self.isEnabled) {
+        [super continueTrackingWithTouch:touch withEvent:event];
+        [self _handleTouch:touch];
+        return YES;
+    } else {
+        return NO;
+    }
 }
 
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     [super endTrackingWithTouch:touch withEvent:event];
-    if ([self isFirstResponder]) {
+    if (_shouldBecomeFirstResponder && [self isFirstResponder]) {
         [self resignFirstResponder];
     }
     [self _handleTouch:touch];
@@ -320,7 +344,7 @@
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
     [super cancelTrackingWithEvent:event];
-    if ([self isFirstResponder]) {
+    if (_shouldBecomeFirstResponder && [self isFirstResponder]) {
         [self resignFirstResponder];
     }
 }
@@ -329,7 +353,7 @@
     if ([gestureRecognizer.view isEqual:self]) {
         return !self.isUserInteractionEnabled;
     }
-    return YES;
+    return self.shouldBeginGestureRecognizerBlock ? self.shouldBeginGestureRecognizerBlock(gestureRecognizer) : NO;
 }
 
 - (void)_handleTouch:(UITouch *)touch {
@@ -356,7 +380,7 @@
 #pragma mark - First responder
 
 - (BOOL)canBecomeFirstResponder {
-    return YES;
+    return _shouldBecomeFirstResponder;
 }
 
 #pragma mark - Intrinsic Content Size
@@ -389,11 +413,13 @@
 }
 
 - (void)accessibilityIncrement {
-    self.value += self.allowsHalfStars ? .5f : 1.f;
+    CGFloat value = self.value + (self.allowsHalfStars ? .5f : 1.f);
+    [self setValue:value sendValueChangedAction:YES];
 }
 
 - (void)accessibilityDecrement {
-    self.value -= self.allowsHalfStars ? .5f : 1.f;
+    CGFloat value = self.value - (self.allowsHalfStars ? .5f : 1.f);
+    [self setValue:value sendValueChangedAction:YES];
 }
 
 @end
